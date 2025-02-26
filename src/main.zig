@@ -1,6 +1,5 @@
 const std = @import("std");
 const c = @cImport({
-    @cDefine("GLFW_INCLUDE_NONE", {});
     @cInclude("glad/glad.h");
     @cInclude("GLFW/glfw3.h");
 });
@@ -28,9 +27,11 @@ fn framebuffer_size_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     c.glViewport(0, 0, width, height);
 }
 
-fn process_input(window: ?*c.GLFWwindow) void {
-    if (c.glfwGetKey(window, c.GLFW_KEY_ESCAPE) == c.GLFW_PRESS) {
-        c.glfwSetWindowShouldClose(window, 1);
+fn key_callback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+    _ = scancode;
+    _ = mods;
+    if (key == c.GLFW_KEY_ESCAPE and action == c.GLFW_PRESS) {
+        c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
     }
 }
 
@@ -42,6 +43,18 @@ fn check_shader_compilation(shader: c.GLuint) void {
     if (success == 0) {
         c.glGetShaderInfoLog(shader, 512, &log_length, &info_log[0]);
         std.debug.print("ERROR::SHADER::VERTEX::COMPILATION_FAILED\n{s}\n", .{info_log[0..@intCast(log_length)]});
+    }
+}
+
+fn check_shader_program_compilation(program: c.GLuint) void {
+    // check successful linking
+    var success: c_int = undefined;
+    var info_log: [512]u8 = undefined;
+    var log_length: c_int = undefined;
+    c.glGetProgramiv(program, c.GL_LINK_STATUS, &success);
+    if (success == 0) {
+        c.glGetProgramInfoLog(program, 512, &log_length, &info_log[0]);
+        std.debug.print("ERROR::SHADER::PROGRAM::COMPILATION_FAILED\n{s}\n", .{info_log[0..@intCast(log_length)]});
     }
 }
 
@@ -73,6 +86,8 @@ pub fn main() !void {
         std.debug.print("Failed to open window", .{});
     }
 
+    _ = c.glfwSetKeyCallback(window, key_callback);
+
     c.glfwMakeContextCurrent(window);
     _ = c.glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
@@ -92,62 +107,105 @@ pub fn main() !void {
     check_shader_compilation(vertex_shader);
 
     // create and compile fragment shader
-    const fragment_shader_source = try load_shader_source(allocator, "./src/shaders/default.frag");
-    defer allocator.free(fragment_shader_source);
+    const orange_frag_shader_source = try load_shader_source(allocator, "./src/shaders/orange.frag");
+    defer allocator.free(orange_frag_shader_source);
 
-    const fragment_shader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
-    c.glShaderSource(fragment_shader, 1, &fragment_shader_source.ptr, null);
-    c.glCompileShader(fragment_shader);
-    check_shader_compilation(fragment_shader);
+    const orange_frag_shader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
+    c.glShaderSource(orange_frag_shader, 1, &orange_frag_shader_source.ptr, null);
+    c.glCompileShader(orange_frag_shader);
+    check_shader_compilation(orange_frag_shader);
+
+    const pink_frag_source = try load_shader_source(allocator, "./src/shaders/pink.frag");
+    defer allocator.free(pink_frag_source);
+
+    const pink_frag_shader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
+    c.glShaderSource(pink_frag_shader, 1, &pink_frag_source.ptr, null);
+    c.glCompileShader(pink_frag_shader);
+    check_shader_compilation(pink_frag_shader);
 
     // create shader program (link shaders)
-    const shader_program = c.glCreateProgram();
-    c.glAttachShader(shader_program, vertex_shader);
-    c.glAttachShader(shader_program, fragment_shader);
-    c.glLinkProgram(shader_program);
+    const orange_shader_prog = c.glCreateProgram();
+    c.glAttachShader(orange_shader_prog, vertex_shader);
+    c.glAttachShader(orange_shader_prog, orange_frag_shader);
+    c.glLinkProgram(orange_shader_prog);
+    check_shader_program_compilation(orange_shader_prog);
 
-    // check successful linking
-    var success: c_int = undefined;
-    var info_log: [512]u8 = undefined;
-    var log_length: c_int = undefined;
-    c.glGetProgramiv(shader_program, c.GL_LINK_STATUS, &success);
-    if (success == 0) {
-        c.glGetProgramInfoLog(shader_program, 512, &log_length, &info_log[0]);
-        std.debug.print("ERROR::SHADER::VERTEX::COMPILATION_FAILED\n{s}\n", .{info_log[0..@intCast(log_length)]});
-    }
+    const pink_shader_prog = c.glCreateProgram();
+    c.glAttachShader(pink_shader_prog, vertex_shader);
+    c.glAttachShader(pink_shader_prog, pink_frag_shader);
+    c.glLinkProgram(pink_shader_prog);
+    check_shader_program_compilation(pink_shader_prog);
 
     // delete shaders now that they are in the program
     c.glDeleteShader(vertex_shader);
-    c.glDeleteShader(fragment_shader);
+    c.glDeleteShader(orange_frag_shader);
+    c.glDeleteShader(pink_frag_shader);
 
-    const vertices = [_]f32{
-        -0.5, -0.5, 0.0,
+    const vertices_1 = [_]c.GLfloat{
+        0.5,  0.5,  0.0,
         0.5,  -0.5, 0.0,
-        0.0,  0.5,  0.0,
+        -0.5, 0.5,  0.0,
     };
 
-    var VBO: c.GLuint = undefined;
-    var VAO: c.GLuint = undefined;
-    c.glGenVertexArrays(1, &VAO);
-    c.glGenBuffers(1, &VBO);
+    const vertices_2 = [_]c.GLfloat{
+        0.5,  -0.5, 0.0,
+        -0.5, 0.5,  0.0,
+        -0.5, -0.5, 0.0,
+    };
 
-    c.glBindVertexArray(VAO);
+    // const indices = [_]c.GLuint{
+    //     0, 1, 3,
+    //     1, 2, 3,
+    // };
 
-    c.glBindBuffer(c.GL_ARRAY_BUFFER, VBO);
-    c.glBufferData(c.GL_ARRAY_BUFFER, @sizeOf(@TypeOf(vertices)), &vertices, c.GL_STATIC_DRAW);
+    var vaos = std.ArrayList(c.GLuint).init(allocator);
+    defer vaos.deinit();
 
-    c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 3 * @sizeOf(f32), @ptrFromInt(0));
+    var vbos = std.ArrayList(c.GLuint).init(allocator);
+    defer vbos.deinit();
+
+    // define vertex arrays and vertex buffers
+    c.glGenVertexArrays(2, try vaos.addManyAsArray(2));
+    c.glGenBuffers(2, try vbos.addManyAsArray(2));
+
+    // setup first vao
+    c.glBindVertexArray(vaos.items[0]);
+
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, vbos.items[0]);
+    c.glBufferData(c.GL_ARRAY_BUFFER, @sizeOf(@TypeOf(vertices_1)), &vertices_1, c.GL_STATIC_DRAW);
+
+    c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 3 * @sizeOf(c.GLuint), @ptrFromInt(0));
     c.glEnableVertexAttribArray(0);
 
-    while (c.glfwWindowShouldClose(window) == 0) {
-        process_input(window);
+    // setup second vao
+    c.glBindVertexArray(vaos.items[1]);
 
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, vbos.items[1]);
+    c.glBufferData(c.GL_ARRAY_BUFFER, @sizeOf(@TypeOf(vertices_2)), &vertices_2, c.GL_STATIC_DRAW);
+
+    c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 3 * @sizeOf(c.GLuint), @ptrFromInt(0));
+    c.glEnableVertexAttribArray(0);
+
+    // Deselect vertex array
+    c.glBindVertexArray(0);
+
+    // enable wireframe mode
+    // c.glPolygonMode(c.GL_FRONT_AND_BACK, c.GL_LINE);
+
+    while (c.glfwWindowShouldClose(window) == 0) {
+        // set bg color
         c.glClearColor(0.2, 0.3, 0.3, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT);
 
-        c.glUseProgram(shader_program);
-        c.glBindVertexArray(VAO);
+        c.glUseProgram(orange_shader_prog);
+        c.glBindVertexArray(vaos.items[0]);
         c.glDrawArrays(c.GL_TRIANGLES, 0, 3);
+
+        c.glUseProgram(pink_shader_prog);
+        c.glBindVertexArray(vaos.items[1]);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, 3);
+        // c.glDrawElements(c.GL_TRIANGLES, 6, c.GL_UNSIGNED_INT, @ptrFromInt(0));
+        c.glBindVertexArray(0);
 
         c.glfwSwapBuffers(window);
         c.glfwPollEvents();
